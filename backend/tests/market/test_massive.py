@@ -199,3 +199,97 @@ class TestMassiveDataSource:
         assert cache.get_price("AAPL") == 190.50
 
         await source.stop()
+
+
+@pytest.mark.asyncio
+class TestMassivePollSafety:
+    """Removal race, ticker-list copy, and key-safe logging."""
+
+    async def test_fetch_receives_copy_of_tickers(self):
+        src = MassiveDataSource(api_key="k", price_cache=PriceCache())
+        src._client = MagicMock()
+        src._tickers = ["AAPL"]
+        src._fetch_snapshots = MagicMock(return_value=[])
+        await src._poll_once()
+        src._fetch_snapshots.assert_called_once_with(["AAPL"])
+        assert src._fetch_snapshots.call_args.args[0] is not src._tickers
+
+    async def test_fetch_snapshots_calls_client(self):
+        src = MassiveDataSource(api_key="k", price_cache=PriceCache())
+        src._client = MagicMock()
+        src._client.get_snapshot_all.return_value = ["x"]
+        assert src._fetch_snapshots(["AAPL", "MSFT"]) == ["x"]
+        kwargs = src._client.get_snapshot_all.call_args.kwargs
+        assert kwargs["tickers"] == ["AAPL", "MSFT"]
+
+    async def test_ticker_removed_during_poll_is_not_rewritten(self):
+        cache = PriceCache()
+        src = MassiveDataSource(api_key="k", price_cache=cache)
+        src._client = MagicMock()
+        src._tickers = ["AAPL", "PYPL"]
+
+        def fetch(tickers):
+            src._tickers = ["AAPL"]  # simulate remove_ticker mid-flight
+            return [
+                _make_snapshot("AAPL", 190.0, 1707580800000),
+                _make_snapshot("PYPL", 60.0, 1707580800000),
+            ]
+
+        src._fetch_snapshots = fetch
+        await src._poll_once()
+        assert "AAPL" in cache
+        assert "PYPL" not in cache
+
+    async def test_untracked_ticker_in_response_ignored(self):
+        cache = PriceCache()
+        src = MassiveDataSource(api_key="k", price_cache=cache)
+        src._client = MagicMock()
+        src._tickers = ["AAPL"]
+        src._fetch_snapshots = MagicMock(return_value=[_make_snapshot("ZZZ", 1.0, 1707580800000)])
+        await src._poll_once()
+        assert len(cache) == 0
+
+    async def test_poll_failure_logs_type_only(self, caplog):
+        cache = PriceCache()
+        cache.update("AAPL", 190.0)
+        src = MassiveDataSource(api_key="SECRET", price_cache=cache)
+        src._client = MagicMock()
+        src._tickers = ["AAPL"]
+        src._fetch_snapshots = MagicMock(side_effect=RuntimeError("https://x?apiKey=SECRET"))
+        await src._poll_once()
+        assert "SECRET" not in caplog.text
+        assert "RuntimeError" in caplog.text
+        assert cache.get_price("AAPL") == 190.0  # last price kept
+
+    async def test_malformed_snapshot_logs_type_only(self, caplog):
+        src = MassiveDataSource(api_key="k", price_cache=PriceCache())
+        src._client = MagicMock()
+        src._tickers = ["AAPL"]
+        bad = MagicMock()
+        bad.ticker = "AAPL"
+        bad.last_trade = None
+        src._fetch_snapshots = MagicMock(return_value=[bad])
+        await src._poll_once()
+        assert "AttributeError" in caplog.text
+
+    async def test_add_ticker_normalizes_and_dedupes(self):
+        src = MassiveDataSource(api_key="k", price_cache=PriceCache())
+        await src.add_ticker(" pypl ")
+        await src.add_ticker("PYPL")
+        assert src.get_tickers() == ["PYPL"]
+
+    async def test_poll_loop_polls_on_interval(self):
+        import asyncio
+
+        src = MassiveDataSource(api_key="k", price_cache=PriceCache(), poll_interval=0.01)
+        src._client = MagicMock()
+        src._tickers = ["AAPL"]
+        src._fetch_snapshots = MagicMock(return_value=[])
+        task = asyncio.create_task(src._poll_loop())
+        await asyncio.sleep(0.08)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert src._fetch_snapshots.call_count >= 2

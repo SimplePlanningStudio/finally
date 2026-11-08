@@ -1035,13 +1035,13 @@ uv run --extra dev ruff check app/ tests/
 
 Do these in order. Each step leaves the test suite green.
 
-1. [ ] `models.py`: add `open_price`, `session_open`, `session_change_percent`, and update `to_dict()` (§3). Add the tests in §11.1.
-2. [ ] `cache.py`: carry `open_price` forward, make `remove()` bump `version`, read `version` under the lock (§4). Add the tests in §11.2.
-3. [ ] `seed_prices.py`: add `DEFAULT_TICKERS` (§7.3).
-4. [ ] `factory.py`: add `_poll_interval()` and `MASSIVE_POLL_SECONDS` (§6). Add the tests in §11.3.
-5. [ ] `massive_client.py`: pass a ticker-list copy to the thread, add the stale-ticker guard, log only the exception type (§5.2). Add the tests in §11.4.
-6. [ ] `service.py`: add `MarketService` and export it from `__init__.py` (§7.3). Add the tests in §11.5.
-7. [ ] `stream.py`: create the router per call, send empty events, add the keep-alive (§8). Add the tests in §11.6.
-8. [ ] Update `backend/CLAUDE.md` "Market Data API" to mention `MarketService`, `open_price` and `session_change_percent`.
+1. [x] `models.py`: add `open_price`, `session_open`, `session_change_percent`, and update `to_dict()` (§3). Add the tests in §11.1.
+2. [x] `cache.py`: carry `open_price` forward, make `remove()` bump `version`, read `version` under the lock (§4). Add the tests in §11.2.
+3. [x] `seed_prices.py`: add `DEFAULT_TICKERS` (§7.3).
+4. [x] `factory.py`: add `_poll_interval()` and `MASSIVE_POLL_SECONDS` (§6). Add the tests in §11.3.
+5. [x] `massive_client.py`: pass a ticker-list copy to the thread, add the stale-ticker guard, log only the exception type (§5.2). Add the tests in §11.4.
+6. [x] `service.py`: add `MarketService` and export it from `__init__.py` (§7.3). Add the tests in §11.5.
+7. [x] `stream.py`: create the router per call, send empty events, add the keep-alive (§8). Add the tests in §11.6.
+8. [x] Update `backend/CLAUDE.md` "Market Data API" to mention `MarketService`, `open_price` and `session_change_percent`.
 9. [ ] Backend agent: `app/db/tracked_tickers()`, `app/main.py` with `create_app()`, `app/deps.py`, and calls to `market.sync()` from the watchlist, trade and reset paths (§9, §10).
-10. [ ] Check by hand: `uv run uvicorn app.main:app`, then `curl -N localhost:8000/api/stream/prices` shows `session_change_percent`. Add a ticker and then remove it, and check that it appears in the stream and then disappears.
+10. [x] Check by hand (done with a minimal app; repeat once `app/main.py` exists): `uv run uvicorn app.main:app`, then `curl -N localhost:8000/api/stream/prices` shows `session_change_percent`. Add a ticker and then remove it, and check that it appears in the stream and then disappears.

@@ -75,3 +75,40 @@ class TestPriceUpdate:
 
         with pytest.raises(AttributeError):
             update.price = 200.00  # Should raise error
+
+
+class TestSessionOpen:
+    """open_price / session_change_percent (PLAN §6)."""
+
+    def test_session_change_percent_uses_open_price(self):
+        u = PriceUpdate("AAPL", price=191.0, previous_price=190.5, timestamp=1.0, open_price=190.0)
+        assert u.session_change_percent == 0.5263
+        assert u.change_percent == 0.2625
+
+    def test_session_change_percent_negative(self):
+        u = PriceUpdate("AAPL", price=180.0, previous_price=181.0, timestamp=1.0, open_price=200.0)
+        assert u.session_change_percent == -10.0
+
+    def test_session_change_percent_zero_open(self):
+        u = PriceUpdate("AAPL", price=10.0, previous_price=0.0, timestamp=1.0, open_price=0.0)
+        assert u.session_change_percent == 0.0
+
+    def test_open_price_defaults_to_previous_price(self):
+        u = PriceUpdate("AAPL", price=191.0, previous_price=190.0, timestamp=1.0)
+        assert u.open_price is None
+        assert u.session_open == 190.0
+        assert u.to_dict()["open_price"] == 190.0
+
+    def test_to_dict_full_shape(self):
+        d = PriceUpdate("AAPL", 190.5, 190.42, 1762600000.123, open_price=189.7).to_dict()
+        assert d == {
+            "ticker": "AAPL",
+            "price": 190.5,
+            "previous_price": 190.42,
+            "open_price": 189.7,
+            "timestamp": 1762600000.123,
+            "change": 0.08,
+            "change_percent": 0.042,
+            "session_change_percent": 0.4217,
+            "direction": "up",
+        }

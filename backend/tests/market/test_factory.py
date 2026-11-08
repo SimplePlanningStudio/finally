@@ -3,6 +3,8 @@
 import os
 from unittest.mock import patch
 
+import pytest
+
 from app.market.cache import PriceCache
 from app.market.factory import create_market_data_source
 from app.market.massive_client import MassiveDataSource
@@ -77,3 +79,37 @@ class TestFactory:
 
         assert isinstance(source, MassiveDataSource)
         assert source._cache is cache
+
+
+class TestPollInterval:
+    """MASSIVE_POLL_SECONDS parsing (PLAN §5)."""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("", 15.0),
+            ("  ", 15.0),
+            ("5", 5.0),
+            (" 7.5 ", 7.5),
+            ("0.5", 2.0),
+            ("-3", 2.0),
+            ("abc", 15.0),
+            ("nan", 15.0),
+        ],
+    )
+    def test_poll_interval(self, raw, expected):
+        env = {"MASSIVE_API_KEY": "k", "MASSIVE_POLL_SECONDS": raw}
+        with patch.dict(os.environ, env, clear=True):
+            src = create_market_data_source(PriceCache())
+        assert isinstance(src, MassiveDataSource)
+        assert src._interval == expected
+
+    def test_poll_interval_unset(self):
+        with patch.dict(os.environ, {"MASSIVE_API_KEY": "k"}, clear=True):
+            src = create_market_data_source(PriceCache())
+        assert src._interval == 15.0
+
+    def test_poll_interval_ignored_for_simulator(self):
+        with patch.dict(os.environ, {"MASSIVE_POLL_SECONDS": "5"}, clear=True):
+            src = create_market_data_source(PriceCache())
+        assert isinstance(src, SimulatorDataSource)

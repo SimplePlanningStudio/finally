@@ -9,33 +9,36 @@ from .models import PriceUpdate
 
 
 class PriceCache:
-    """Thread-safe in-memory cache of the latest price for each ticker.
+    """Latest price per ticker, plus previous price and session open.
 
-    Writers: SimulatorDataSource or MassiveDataSource (one at a time).
-    Readers: SSE streaming endpoint, portfolio valuation, trade execution.
+    Writers: the active MarketDataSource (simulator loop or Massive poller).
+    Readers: SSE stream, trade execution, portfolio valuation, snapshot task.
     """
 
     def __init__(self) -> None:
         self._prices: dict[str, PriceUpdate] = {}
         self._lock = Lock()
-        self._version: int = 0  # Monotonically increasing; bumped on every update
+        self._version: int = 0  # Bumped on every mutation (update or effective remove)
 
     def update(self, ticker: str, price: float, timestamp: float | None = None) -> PriceUpdate:
-        """Record a new price for a ticker. Returns the created PriceUpdate.
+        """Record a new price. The first update for a ticker sets its session open.
 
-        Automatically computes direction and change from the previous price.
-        If this is the first update for the ticker, previous_price == price (direction='flat').
+        Direction and change are computed from the previous price. On the first
+        update previous_price == open_price == price (direction='flat').
         """
         with self._lock:
             ts = timestamp or time.time()
             prev = self._prices.get(ticker)
-            previous_price = prev.price if prev else price
+            rounded = round(price, 2)
+            previous_price = prev.price if prev else rounded
+            open_price = prev.session_open if prev else rounded
 
             update = PriceUpdate(
                 ticker=ticker,
-                price=round(price, 2),
-                previous_price=round(previous_price, 2),
+                price=rounded,
+                previous_price=previous_price,
                 timestamp=ts,
+                open_price=open_price,
             )
             self._prices[ticker] = update
             self._version += 1
@@ -57,14 +60,16 @@ class PriceCache:
         return update.price if update else None
 
     def remove(self, ticker: str) -> None:
-        """Remove a ticker from the cache (e.g., when removed from watchlist)."""
+        """Drop a ticker. Bumps version if it was present; re-adding starts a new session open."""
         with self._lock:
-            self._prices.pop(ticker, None)
+            if self._prices.pop(ticker, None) is not None:
+                self._version += 1
 
     @property
     def version(self) -> int:
         """Current version counter. Useful for SSE change detection."""
-        return self._version
+        with self._lock:
+            return self._version
 
     def __len__(self) -> int:
         with self._lock:

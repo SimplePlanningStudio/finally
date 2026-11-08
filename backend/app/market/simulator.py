@@ -241,6 +241,8 @@ class SimulatorDataSource(MarketDataSource):
 
     async def add_ticker(self, ticker: str) -> None:
         if self._sim:
+            if ticker in self._sim.get_tickers():
+                return  # already tracked: keep its price and session open
             self._sim.add_ticker(ticker)
             # Seed cache immediately so the ticker has a price right away
             price = self._sim.get_price(ticker)

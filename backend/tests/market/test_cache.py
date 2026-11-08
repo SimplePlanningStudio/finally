@@ -101,3 +101,67 @@ class TestPriceCache:
         cache = PriceCache()
         update = cache.update("AAPL", 190.12345)
         assert update.price == 190.12
+
+
+class TestPriceCacheSessionOpen:
+    """Session open carry-forward and remove() versioning."""
+
+    def test_first_update_sets_open(self):
+        c = PriceCache()
+        u = c.update("AAPL", 190.123)
+        assert u.open_price == 190.12
+        assert u.session_change_percent == 0.0
+
+    def test_open_price_set_on_first_update_and_kept(self):
+        c = PriceCache()
+        c.update("AAPL", 190.0)
+        c.update("AAPL", 195.0)
+        u = c.update("AAPL", 185.0)
+        assert u.open_price == 190.0
+        assert u.previous_price == 195.0
+        assert u.direction == "down"
+        assert u.session_change_percent == -2.6316
+
+    def test_open_is_per_ticker(self):
+        c = PriceCache()
+        c.update("AAPL", 190.0)
+        c.update("MSFT", 420.0)
+        c.update("AAPL", 191.0)
+        assert c.get("AAPL").open_price == 190.0
+        assert c.get("MSFT").open_price == 420.0
+
+    def test_readd_after_remove_resets_open(self):
+        c = PriceCache()
+        c.update("AAPL", 190.0)
+        c.update("AAPL", 191.0)
+        c.remove("AAPL")
+        u = c.update("AAPL", 200.0)
+        assert u.open_price == 200.0
+        assert u.previous_price == 200.0
+
+    def test_remove_bumps_version_only_when_present(self):
+        c = PriceCache()
+        c.update("AAPL", 190.0)
+        v = c.version
+        c.remove("AAPL")
+        assert c.version == v + 1
+        c.remove("AAPL")
+        assert c.version == v + 1
+
+    def test_concurrent_updates_are_consistent(self):
+        import threading
+
+        c = PriceCache()
+
+        def worker(t: str) -> None:
+            for i in range(500):
+                c.update(t, 100.0 + i)
+
+        threads = [threading.Thread(target=worker, args=(t,)) for t in ("A", "B", "C", "D")]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        assert c.version == 2000
+        assert all(c.get(t).open_price == 100.0 for t in "ABCD")
+        assert all(c.get_price(t) == 599.0 for t in "ABCD")
