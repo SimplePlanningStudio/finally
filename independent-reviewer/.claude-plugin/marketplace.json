@@ -1,0 +1,14 @@
+{
+  "name": "waheed-marketplace",
+  "owner": {
+    "name": "waheed",
+    "email": "waheed@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "independent-reviewer",
+      "source": "./",
+      "description": "Carry out an independent review of all changes since last commit"
+    }
+  ]
+}

@@ -1,60 +1,74 @@
 # FinAlly — AI Trading Workstation
 
-A visually stunning AI-powered trading workstation that streams live market data, simulates portfolio trading, and integrates an LLM chat assistant that can analyze positions and execute trades via natural language.
+An AI-powered trading workstation that streams live market data, lets you trade a simulated $10,000 portfolio, and includes a chat assistant that can analyze your positions and place trades for you. It looks and works like a Bloomberg-style terminal with an AI copilot.
 
-Built entirely by coding agents as a capstone project for an agentic AI coding course.
+Built entirely by coding agents as the capstone project for an agentic AI coding course.
+
+> **Status:** the market data layer is complete. The rest of the platform is in progress. See [`planning/PLAN.md`](planning/PLAN.md).
 
 ## Features
 
-- **Live price streaming** via SSE with green/red flash animations
-- **Simulated portfolio** — $10k virtual cash, market orders, instant fills
-- **Portfolio visualizations** — heatmap (treemap), P&L chart, positions table
-- **AI chat assistant** — analyzes holdings, suggests and auto-executes trades
-- **Watchlist management** — track tickers manually or via AI
-- **Dark terminal aesthetic** — Bloomberg-inspired, data-dense layout
+- **Live prices** streamed over SSE, with green/red flash animations and sparklines
+- **Simulated trading:** market orders, instant fills, fractional shares, no fees
+- **Portfolio views:** P&L heatmap (treemap), portfolio value chart, positions table
+- **AI assistant** (DeepSeek via LiteLLM) that analyzes holdings and runs trades and watchlist changes when you ask
+- **Watchlist management**, by hand or through chat
+- **One-click reset** back to the first-launch state
 
 ## Architecture
 
-Single Docker container serving everything on port 8000:
+Everything runs in one Docker container on port 8000:
 
-- **Frontend**: Next.js (static export) with TypeScript and Tailwind CSS
-- **Backend**: FastAPI (Python/uv) with SSE streaming
-- **Database**: SQLite with lazy initialization
-- **AI**: LiteLLM → OpenRouter (Cerebras inference) with structured outputs
-- **Market data**: Built-in GBM simulator (default) or Massive API (optional)
+| Layer | Tech |
+|---|---|
+| Frontend | Next.js + TypeScript (static export), Tailwind, Lightweight Charts |
+| Backend | FastAPI (Python, managed with `uv`), SSE streaming |
+| Database | SQLite in `db/finally.db`, created and seeded on startup |
+| AI | LiteLLM → DeepSeek (`deepseek/deepseek-flash`), JSON mode validated with Pydantic |
+| Market data | Built-in GBM simulator (default) or the Massive/Polygon.io REST API |
 
 ## Quick Start
 
 ```bash
-# Clone and configure
-cp .env.example .env
-# Add your OPENROUTER_API_KEY to .env
+cp .env.example .env          # add DEEP_SEEK_API_KEY to enable chat
+./scripts/start_mac.sh        # or: docker compose up -d --build
+# open http://localhost:8000
 
-# Run with Docker
-docker build -t finally .
-docker run -v finally-data:/app/db -p 8000:8000 --env-file .env finally
-
-# Open http://localhost:8000
+./scripts/stop_mac.sh         # or: docker compose down (data is kept)
 ```
 
-## Environment Variables
+Your data lives in the `finally-data` Docker volume. To wipe it, run `docker compose down -v`.
 
-| Variable | Required | Description |
+## Configuration
+
+| Variable | Default | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for AI chat |
-| `MASSIVE_API_KEY` | No | Massive (Polygon.io) key for real market data; omit to use simulator |
-| `LLM_MOCK` | No | Set `true` for deterministic mock LLM responses (testing) |
+| `DEEP_SEEK_API_KEY` | — | Turns on AI chat. Without it, `/api/chat` returns 503 |
+| `LLM_MODEL` | `deepseek/deepseek-flash` | Overrides the LiteLLM model |
+| `MASSIVE_API_KEY` | — | Uses real market data. Leave empty to use the simulator |
+| `MASSIVE_POLL_SECONDS` | `15` | How often to poll Massive, in seconds |
+| `DB_PATH` | `/app/db/finally.db` | Location of the SQLite file |
+| `FAKE_LLM` | `false` | Scripted fake LLM for E2E tests |
 
-## Project Structure
+## Development
+
+```bash
+cd backend
+uv sync
+uv run pytest                 # backend unit tests
+uv run market_data_demo.py    # terminal demo of the price simulator
+```
+
+## Project Layout
 
 ```
 finally/
-├── frontend/    # Next.js static export
-├── backend/     # FastAPI uv project
-├── planning/    # Project documentation and agent contracts
-├── test/        # Playwright E2E tests
-├── db/          # SQLite volume mount (runtime)
-└── scripts/     # Start/stop helpers
+├── frontend/   # Next.js app (static export)
+├── backend/    # FastAPI uv project (app/market, app/db, ...)
+├── planning/   # Specs and agent contracts (start with PLAN.md)
+├── test/       # Playwright E2E tests
+├── scripts/    # Start/stop wrappers around docker compose
+└── db/         # SQLite volume mount (runtime)
 ```
 
 ## License
