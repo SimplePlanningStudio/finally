@@ -14,6 +14,9 @@ SEED_PRICES: dict[str, float] = {
     "NFLX": 600.00,
 }
 
+# Default watchlist (seed data and reset use this list)
+DEFAULT_TICKERS: list[str] = list(SEED_PRICES)
+
 # Per-ticker GBM parameters
 # sigma: annualized volatility (higher = more price movement)
 # mu: annualized drift / expected return

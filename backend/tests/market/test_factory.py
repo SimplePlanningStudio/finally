@@ -77,3 +77,34 @@ class TestFactory:
 
         assert isinstance(source, MassiveDataSource)
         assert source._cache is cache
+
+
+class TestPollInterval:
+    """MASSIVE_POLL_SECONDS parsing."""
+
+    def _interval(self, raw: str | None) -> float:
+        env = {"MASSIVE_API_KEY": "test-key"}
+        if raw is not None:
+            env["MASSIVE_POLL_SECONDS"] = raw
+        with patch.dict(os.environ, env, clear=True):
+            source = create_market_data_source(PriceCache())
+        assert isinstance(source, MassiveDataSource)
+        return source._interval
+
+    def test_default_when_unset(self):
+        assert self._interval(None) == 15.0
+
+    def test_default_when_empty(self):
+        assert self._interval("  ") == 15.0
+
+    def test_custom_value(self):
+        assert self._interval("5") == 5.0
+
+    def test_clamped_to_minimum(self):
+        assert self._interval("0.5") == 2.0
+
+    def test_invalid_falls_back(self):
+        assert self._interval("abc") == 15.0
+
+    def test_nan_falls_back(self):
+        assert self._interval("nan") == 15.0

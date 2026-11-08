@@ -199,3 +199,59 @@ class TestMassiveDataSource:
         assert cache.get_price("AAPL") == 190.50
 
         await source.stop()
+
+
+@pytest.mark.asyncio
+class TestMassiveSafety:
+    """Removal race and key-safe logging."""
+
+    async def test_ticker_removed_during_poll_is_not_rewritten(self):
+        cache = PriceCache()
+        source = MassiveDataSource(api_key="test-key", price_cache=cache, poll_interval=60.0)
+        source._client = MagicMock()
+        source._tickers = ["AAPL", "PYPL"]
+
+        def fetch(tickers):
+            assert tickers == ["AAPL", "PYPL"]
+            source._tickers = ["AAPL"]  # remove_ticker("PYPL") while in flight
+            return [
+                _make_snapshot("AAPL", 190.0, 1707580800000),
+                _make_snapshot("PYPL", 60.0, 1707580800000),
+            ]
+
+        with patch.object(source, "_fetch_snapshots", side_effect=fetch):
+            await source._poll_once()
+
+        assert "AAPL" in cache
+        assert "PYPL" not in cache
+
+    async def test_fetch_receives_copy_of_ticker_list(self):
+        source = MassiveDataSource(api_key="test-key", price_cache=PriceCache(), poll_interval=60.0)
+        source._client = MagicMock()
+        source._tickers = ["AAPL"]
+
+        with patch.object(source, "_fetch_snapshots", return_value=[]) as mock_fetch:
+            await source._poll_once()
+
+        (passed,) = mock_fetch.call_args.args
+        assert passed == ["AAPL"]
+        assert passed is not source._tickers
+
+    async def test_fetch_snapshots_passes_tickers_to_client(self):
+        source = MassiveDataSource(api_key="test-key", price_cache=PriceCache(), poll_interval=60.0)
+        source._client = MagicMock()
+        source._fetch_snapshots(["AAPL", "MSFT"])
+        assert source._client.get_snapshot_all.call_args.kwargs["tickers"] == ["AAPL", "MSFT"]
+
+    async def test_poll_failure_logs_type_only(self, caplog):
+        source = MassiveDataSource(api_key="SECRET", price_cache=PriceCache(), poll_interval=60.0)
+        source._client = MagicMock()
+        source._tickers = ["AAPL"]
+
+        with patch.object(
+            source, "_fetch_snapshots", side_effect=RuntimeError("https://x?apiKey=SECRET")
+        ):
+            await source._poll_once()
+
+        assert "SECRET" not in caplog.text
+        assert "RuntimeError" in caplog.text
