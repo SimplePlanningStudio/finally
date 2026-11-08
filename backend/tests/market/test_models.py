@@ -75,3 +75,15 @@ class TestPriceUpdate:
 
         with pytest.raises(AttributeError):
             update.price = 200.00  # Should raise error
+
+    def test_session_change_percent(self):
+        update = PriceUpdate(ticker="AAPL", price=105.0, previous_price=104.0, timestamp=1.0, open_price=100.0)
+        assert update.session_change_percent == 5.0
+        d = update.to_dict()
+        assert d["open_price"] == 100.0
+        assert d["session_change_percent"] == 5.0
+
+    def test_session_change_without_open_price(self):
+        update = PriceUpdate(ticker="AAPL", price=105.0, previous_price=104.0, timestamp=1.0)
+        assert update.session_change_percent == 0.0
+        assert update.to_dict()["open_price"] == 105.0

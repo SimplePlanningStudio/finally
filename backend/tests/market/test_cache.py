@@ -14,6 +14,19 @@ class TestPriceCache:
         assert update.price == 190.50
         assert cache.get("AAPL") == update
 
+    def test_open_price_kept_after_first_update(self):
+        cache = PriceCache()
+        assert cache.update("AAPL", 100.0).open_price == 100.0
+        second = cache.update("AAPL", 110.0)
+        assert second.open_price == 100.0
+        assert second.session_change_percent == 10.0
+
+    def test_open_price_resets_after_remove(self):
+        cache = PriceCache()
+        cache.update("AAPL", 100.0)
+        cache.remove("AAPL")
+        assert cache.update("AAPL", 120.0).open_price == 120.0
+
     def test_first_update_is_flat(self):
         """Test that the first update has flat direction."""
         cache = PriceCache()

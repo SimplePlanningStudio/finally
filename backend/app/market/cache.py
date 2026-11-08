@@ -31,11 +31,15 @@ class PriceCache:
             prev = self._prices.get(ticker)
             previous_price = prev.price if prev else price
 
+            rounded = round(price, 2)
+            open_price = prev.open_price if prev and prev.open_price is not None else rounded
+
             update = PriceUpdate(
                 ticker=ticker,
-                price=round(price, 2),
+                price=rounded,
                 previous_price=round(previous_price, 2),
                 timestamp=ts,
+                open_price=open_price,
             )
             self._prices[ticker] = update
             self._version += 1

@@ -25,7 +25,14 @@ def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
 
     if api_key:
         logger.info("Market data source: Massive API (real data)")
-        return MassiveDataSource(api_key=api_key, price_cache=price_cache)
+        try:
+            poll = float(os.environ.get("MASSIVE_POLL_SECONDS", "").strip() or 15.0)
+            if poll <= 0:
+                raise ValueError
+        except ValueError:
+            logger.warning("Invalid MASSIVE_POLL_SECONDS; using 15")
+            poll = 15.0
+        return MassiveDataSource(api_key=api_key, price_cache=price_cache, poll_interval=poll)
     else:
         logger.info("Market data source: GBM Simulator")
         return SimulatorDataSource(price_cache=price_cache)
