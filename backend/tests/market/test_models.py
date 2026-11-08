@@ -75,3 +75,30 @@ class TestPriceUpdate:
 
         with pytest.raises(AttributeError):
             update.price = 200.00  # Should raise error
+
+
+class TestSessionChange:
+    """Session open price and change since open."""
+
+    def test_session_change_percent_uses_open_price(self):
+        update = PriceUpdate("AAPL", price=191.0, previous_price=190.5, timestamp=1.0, open_price=190.0)
+        assert update.session_change_percent == 0.5263
+        assert update.change_percent == 0.2625
+
+    def test_open_price_defaults_to_previous_price(self):
+        update = PriceUpdate("AAPL", price=191.0, previous_price=190.0, timestamp=1.0)
+        assert update.session_open == 190.0
+        assert update.to_dict()["open_price"] == 190.0
+
+    def test_session_change_zero_open(self):
+        update = PriceUpdate("AAPL", price=10.0, previous_price=0.0, timestamp=1.0, open_price=0.0)
+        assert update.session_change_percent == 0.0
+
+    def test_to_dict_has_session_fields(self):
+        result = PriceUpdate("AAPL", 190.5, 190.0, 1.0, open_price=189.0).to_dict()
+        assert result["open_price"] == 189.0
+        assert result["session_change_percent"] == 0.7937
+        assert set(result) == {
+            "ticker", "price", "previous_price", "open_price", "timestamp",
+            "change", "change_percent", "session_change_percent", "direction",
+        }

@@ -101,3 +101,53 @@ class TestPriceCache:
         cache = PriceCache()
         update = cache.update("AAPL", 190.12345)
         assert update.price == 190.12
+
+
+class TestPriceCacheSession:
+    """Session open tracking and version bumps on remove."""
+
+    def test_open_price_set_on_first_update_and_kept(self):
+        cache = PriceCache()
+        cache.update("AAPL", 190.0)
+        cache.update("AAPL", 195.0)
+        update = cache.update("AAPL", 185.0)
+        assert update.open_price == 190.0
+        assert update.previous_price == 195.0
+        assert update.session_change_percent == -2.6316
+
+    def test_first_update_open_is_rounded_price(self):
+        cache = PriceCache()
+        assert cache.update("AAPL", 190.126).open_price == 190.13
+
+    def test_readd_after_remove_resets_open(self):
+        cache = PriceCache()
+        cache.update("AAPL", 190.0)
+        cache.remove("AAPL")
+        assert cache.update("AAPL", 200.0).open_price == 200.0
+
+    def test_remove_bumps_version_only_when_present(self):
+        cache = PriceCache()
+        cache.update("AAPL", 190.0)
+        version = cache.version
+        cache.remove("AAPL")
+        assert cache.version == version + 1
+        cache.remove("AAPL")
+        assert cache.version == version + 1
+
+    def test_concurrent_writers(self):
+        from threading import Thread
+
+        cache = PriceCache()
+
+        def write(ticker: str) -> None:
+            for i in range(500):
+                cache.update(ticker, 100.0 + i)
+
+        threads = [Thread(target=write, args=(f"T{n}",)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert cache.version == 8 * 500
+        assert len(cache) == 8
+        assert all(u.open_price == 100.0 for u in cache.get_all().values())

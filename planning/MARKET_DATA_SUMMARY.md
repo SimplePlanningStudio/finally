@@ -4,7 +4,7 @@
 
 ## What Was Built
 
-A complete market data subsystem in `backend/app/market/` (8 modules, ~500 lines) providing live price simulation and real market data via a unified interface.
+A complete market data subsystem in `backend/app/market/` (9 modules) providing live price simulation and real market data via a unified interface.
 
 ### Architecture
 
@@ -32,7 +32,8 @@ MarketDataSource (ABC)
 | `simulator.py` | `GBMSimulator` (Geometric Brownian Motion with Cholesky-correlated moves) + `SimulatorDataSource` |
 | `massive_client.py` | `MassiveDataSource` — REST polling client for Polygon.io via the `massive` package |
 | `factory.py` | `create_market_data_source()` — selects simulator or Massive based on `MASSIVE_API_KEY` env var |
-| `stream.py` | `create_stream_router()` — FastAPI SSE endpoint factory using version-based change detection |
+| `stream.py` | `create_stream_router()` — FastAPI SSE endpoint factory using version-based change detection, empty events and keep-alives |
+| `service.py` | `MarketService` — owns cache + source; `sync(desired)` keeps tracked tickers = watchlist ∪ positions |
 
 ### Key Design Decisions
 
@@ -44,7 +45,7 @@ MarketDataSource (ABC)
 
 ## Test Suite
 
-**73 tests, all passing.** 6 test modules in `backend/tests/market/`.
+**110 tests, all passing.** 8 test modules in `backend/tests/market/`. (73 originally; 37 added with the PLAN.md alignment changes below.)
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
@@ -68,6 +69,18 @@ A comprehensive code review identified 7 issues. All were resolved:
 5. **Correlation constants cleaned up** — removed unused `DEFAULT_CORR`, consolidated into `CROSS_GROUP_CORR`
 6. **Unused test imports removed** — `pytest`, `math`, `asyncio` cleaned from 4 test files
 7. **Massive test mocks fixed** — `source._client` set in tests, patches target correct names
+
+## PLAN.md Alignment Changes
+
+Implemented from `planning/MARKET_DATA_DESIGN.md`:
+
+- `PriceUpdate.open_price` and `session_change_percent` (in `to_dict()` / SSE); the cache sets the session open on a ticker's first update
+- `PriceCache.remove()` bumps `version`, so the SSE stream drops removed tickers at once; `version` is read under the lock
+- `MarketService.sync()` — the single place the tracked set changes
+- `MASSIVE_POLL_SECONDS` read by the factory (default 15, min 2)
+- Massive: tickers removed during a poll are not written back; errors logged by type only (no key in logs)
+- SSE: router built per call, `data: {}` when empty, `: ping` keep-alive after 15 s
+- `DEFAULT_TICKERS` constant
 
 ## Demo
 

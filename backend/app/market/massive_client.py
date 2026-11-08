@@ -91,38 +91,37 @@ class MassiveDataSource(MarketDataSource):
         if not self._tickers or not self._client:
             return
 
+        requested = list(self._tickers)  # copy for the worker thread
         try:
             # The Massive RESTClient is synchronous — run in a thread to
             # avoid blocking the event loop.
-            snapshots = await asyncio.to_thread(self._fetch_snapshots)
-            processed = 0
-            for snap in snapshots:
-                try:
-                    price = snap.last_trade.price
-                    # Massive timestamps are Unix milliseconds → convert to seconds
-                    timestamp = snap.last_trade.timestamp / 1000.0
-                    self._cache.update(
-                        ticker=snap.ticker,
-                        price=price,
-                        timestamp=timestamp,
-                    )
-                    processed += 1
-                except (AttributeError, TypeError) as e:
-                    logger.warning(
-                        "Skipping snapshot for %s: %s",
-                        getattr(snap, "ticker", "???"),
-                        e,
-                    )
-            logger.debug("Massive poll: updated %d/%d tickers", processed, len(self._tickers))
-
+            snapshots = await asyncio.to_thread(self._fetch_snapshots, requested)
         except Exception as e:
-            logger.error("Massive poll failed: %s", e)
-            # Don't re-raise — the loop will retry on the next interval.
+            # Log only the type: HTTP errors can include the URL and API key.
             # Common failures: 401 (bad key), 429 (rate limit), network errors.
+            # Don't re-raise — the loop will retry on the next interval.
+            logger.error("Massive poll failed: %s", type(e).__name__)
+            return
 
-    def _fetch_snapshots(self) -> list:
+        still_tracked = set(self._tickers)  # may have changed during the await
+        processed = 0
+        for snap in snapshots:
+            ticker = getattr(snap, "ticker", None)
+            if ticker not in still_tracked:
+                continue  # removed while the request was in flight
+            try:
+                price = snap.last_trade.price
+                # Massive timestamps are Unix milliseconds → convert to seconds
+                timestamp = snap.last_trade.timestamp / 1000.0
+                self._cache.update(ticker=ticker, price=price, timestamp=timestamp)
+                processed += 1
+            except (AttributeError, TypeError) as e:
+                logger.warning("Skipping snapshot for %s: %s", ticker, type(e).__name__)
+        logger.debug("Massive poll: updated %d/%d tickers", processed, len(requested))
+
+    def _fetch_snapshots(self, tickers: list[str]) -> list:
         """Synchronous call to the Massive REST API. Runs in a thread."""
         return self._client.get_snapshot_all(
             market_type=SnapshotMarketType.STOCKS,
-            tickers=self._tickers,
+            tickers=tickers,
         )
